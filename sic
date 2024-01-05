@@ -1,0 +1,121 @@
+import SIC_Instruction  # 導入SIC指令模組
+from collections import defaultdict  # 導入defaultdict模組，用於創建字典
+
+def remove_comment(line: str) -> str:
+    # 移除註解
+    for i in range(len(line)):
+        if '.' in line[i]:  # 搜尋行中是否有註解
+            return line[:i].strip()  # 如果有，則返回移除註解後的行
+    return line.strip()  # 如果沒有註解，返回原行
+
+# 處理BYTE指令
+def process_byte(thrd: str) -> tuple:
+    mode, data = thrd[0], ""
+
+    if mode == "C":
+        data += ''.join([hex(ord(c))[2:] for c in thrd[2:-1]]).upper()  # 將字符轉換為十六進制
+    elif mode == "X":
+        data += thrd[2:-1]  # 如果是十六進制，直接取值
+    else:
+        raise ValueError("ERROR BYTE")  # 錯誤處理
+
+    return len(data) // 2, data  # 返回字節長度和處理後的數據
+
+# 處理WORD指令
+def process_word(thrd: str) -> tuple:
+    value, data = int(thrd), ""
+
+    if value >= 0:
+        data = hex(value)[2:].upper().zfill(6)  # 將值轉換為十六進制六位數
+    else:
+        HEX = "1000000"
+        data = hex(int(HEX, 16) + value)[2:].upper().zfill(6)  # 負值的情況
+
+    return len(data) // 2, data  # 返回字節長度和處理後的數據
+
+# 處理RESB指令
+def process_resb(thrd: str) -> tuple:
+    return int(thrd), ""  # 直接返回字節長度和空數據
+
+# 處理RESW指令
+def process_resw(thrd: str) -> tuple:
+    return int(thrd) * 3, ""  # 返回字節長度（字長的三倍）和空數據
+
+def assembler() -> None:
+    LOCATION, ADD = 0, 0
+    RESULT, FUNC_LOC = [], defaultdict(int)  # 創建空字典和默認值為0的defaultdict對象
+
+    with open(r"C:\Users\CJCU-CC\Desktop\sic\Python_SIC_Assembler-main\Python_SIC_Assembler-main\input.txt", "r", encoding="UTF-8") as inp:
+        lines = inp.readlines()  # 讀取所有行
+
+        for line in lines:
+            line = remove_comment(line).strip()  # 移除註解和空白
+            fst, snd, thrd, obj_code = "", "", "", ""  # 初始化各變數
+
+            if not line:  # 如果是空行，跳過
+                continue
+
+            if LOCATION == 0:
+                if line.split()[-1] == "START":
+                    print("ERROR START")
+                    exit()
+
+                LOCATION = int(line.split()[-1], 16)
+                fst, snd, thrd = line.split()[0], line.split()[1], ""  # 解析START指令
+
+                RESULT.append(["", fst, snd, thrd, obj_code])  # 添加到RESULT中
+                continue
+
+            else:
+                if len(line.split()) == 1:
+                    snd = line.split()[0]
+                    obj_code = SIC_Instruction.instruction.get(snd, "ERROR") + "0000"  # 解析單詞指令
+                else:
+                    tokens = line.split()
+                    snd = tokens[0] if len(tokens) == 2 else tokens[1]
+
+                    if snd in SIC_Instruction.instruction:  # 如果指令在指令集中
+                        thrd = tokens[-1]
+                        ADD = 3
+
+                        if len(tokens) == 3:
+                            fst = tokens[0]
+                            FUNC_LOC[fst] = LOCATION
+                    else:
+                        if snd == "END":
+                            ADD = 0
+                            thrd = tokens[-1]
+                        else:
+                            fst, snd, thrd = tokens[0], tokens[1], tokens[2]
+                            FUNC_LOC[fst] = LOCATION
+
+                            if snd == "BYTE":
+                                ADD, obj_code = process_byte(thrd)
+                            elif snd == "WORD":
+                                ADD, obj_code = process_word(thrd)
+                            elif snd == "RESB":
+                                ADD, obj_code = process_resb(thrd)
+                            elif snd == "RESW":
+                                ADD, obj_code = process_resw(thrd)
+
+            RESULT.append([hex(LOCATION)[2:].upper(), fst, snd, thrd, obj_code])  # 添加到RESULT中
+            LOCATION += ADD  # 更新LOCATION
+
+        for idx in range(len(RESULT)):
+            if RESULT[idx][0] == "":
+                continue
+            elif RESULT[idx][2] in ["END", "BYTE", "WORD", "RESB", "RESW"]:
+                continue
+            else:
+                if not RESULT[idx][4]:
+                    if ",X" in RESULT[idx][3]:
+                        RESULT[idx][4] = SIC_Instruction.instruction.get(RESULT[idx][2], "ERROR") + hex(FUNC_LOC[RESULT[idx][3]] + int("8000", 16))[2:].upper().zfill(4)
+                    else:
+                        RESULT[idx][4] = SIC_Instruction.instruction.get(RESULT[idx][2], "ERROR") + hex(FUNC_LOC[RESULT[idx][3]])[2:].upper()
+
+    with open(r"C:\Users\CJCU-CC\Desktop\sic\Python_SIC_Assembler-main\Python_SIC_Assembler-main\output.txt", "w", encoding="UTF-8") as fi:
+        for i in range(len(RESULT)):
+            fi.write(f"{(i + 1) * 5:<10}{RESULT[i][0].zfill(6):<10}{RESULT[i][1]:<10}{RESULT[i][2]:<10}{RESULT[i][3]:<10}{RESULT[i][4].zfill(6):<10}\n")  # 寫入結果
+
+if __name__ == "__main__":
+    assembler()  # 呼叫組譯器
